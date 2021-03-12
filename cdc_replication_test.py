@@ -69,6 +69,7 @@ def write_cql_result(res, path: str):
 SCYLLA_MIGRATE_URL = "https://kbr-scylla.s3-eu-west-1.amazonaws.com/scylla-migrate"
 REPLICATOR_URL = "https://kbr-scylla.s3-eu-west-1.amazonaws.com/scylla-cdc-replicator-1.0.1-SNAPSHOT-jar-with-dependencies.jar"
 REPLICATOR_STATE_URL = "https://kbr-scylla.s3-eu-west-1.amazonaws.com/piotrgrabowski/status"
+GEMINI_SCHEMA_URL = "https://kbr-scylla.s3-eu-west-1.amazonaws.com/piotrgrabowski/schema.json"
 
 
 class CDCReplicationTest(ClusterTester):
@@ -194,16 +195,8 @@ class CDCReplicationTest(ClusterTester):
         # 9 rounds, ~1h30 minutes each -> ~11h30m total
         # The number of rounds is tuned according to the available disk space in an i3.large AWS instance.
         # One more round would cause the nodes to run out of disk space.
-        
-        
-        # TEMP_CHANGE
-        # TEMP_CHANGE
-        # TEMP_CHANGE
-        # TEMP_CHANGE
-        # TEMP_CHANGE
-        # TEMP_CHANGE
-        # TEMP_CHANGE
-        no_rounds = 1
+
+        no_rounds = 9
         for rnd in range(no_rounds):
             self.log.info('Starting round {}'.format(rnd))
 
@@ -218,14 +211,8 @@ class CDCReplicationTest(ClusterTester):
             time.sleep(180)
 
             self.log.info('Stopping nemesis...')
-            # TEMP_CHANGE
-            # TEMP_CHANGE
-            # TEMP_CHANGE
-            # TEMP_CHANGE
-            # TEMP_CHANGE
-            # TEMP_CHANGE
-            # TEMP_CHANGE
-            self.db_cluster.stop_nemesis(timeout=240)
+
+            self.db_cluster.stop_nemesis(timeout=1800)
             self.log.info('Nemesis stopped.')
 
             migrate_log_path = os.path.join(self.logdir, 'scylla-migrate.log')
@@ -319,7 +306,7 @@ class CDCReplicationTest(ClusterTester):
             test_cluster=self.db_cluster,
             oracle_cluster=None,
             loaders=self.loaders,
-            gemini_cmd=self.params.get('gemini_cmd'),
+            gemini_cmd=self.params.get('gemini_cmd')+f' --schema /$HOME/schema.json',
             timeout=self.get_duration(None),
             outputdir=self.loaders.logdir,
             params=params).run()
@@ -334,6 +321,11 @@ class CDCReplicationTest(ClusterTester):
         res = loader_node.remoter.run(cmd=f'wget {SCYLLA_MIGRATE_URL} -O scylla-migrate && chmod +x scylla-migrate')
         if res.exit_status != 0:
             self.fail('Could not obtain scylla-migrate.')
+
+        self.log.info('Getting Gemini schema on loader node.')
+        res = loader_node.remoter.run(cmd=f'wget {GEMINI_SCHEMA_URL} -O /$HOME/schema.json')
+        if res.exit_status != 0:
+            self.fail('Could not obtain Gemini schema.')
 
     def get_email_data(self) -> dict:
         self.log.info("Prepare data for email")
