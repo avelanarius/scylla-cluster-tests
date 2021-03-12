@@ -137,22 +137,22 @@ class CDCReplicationTest(ClusterTester):
         self.log.info('Now go setup the Kafka cluster and connectors!')
         self.log.info('Source cluster is: {}'.format(self.db_cluster.nodes[0].external_address))
         self.log.info('Destination cluster is: {}'.format(self.cs_db_cluster.nodes[0].external_address))
-        
-      	while True:
-      	    self.log.info('Waiting for you to manually setup the Kafka cluster and connectors!')
-      	     
-      	    should_stop_waiting = False
-      	     
-      	    with urllib.request.urlopen(REPLICATOR_STATE_URL) as f:
+
+        while True:
+            self.log.info('Waiting for you to manually setup the Kafka cluster and connectors!')
+             
+            should_stop_waiting = False
+             
+            with urllib.request.urlopen(REPLICATOR_STATE_URL) as f:
                 status = f.read().decode('utf-8')
                 self.log.info('Got status: {}'.format(status))
-      	        should_stop_waiting = ("ON" in status.upper())
-      	  
-      	    if should_stop_waiting:
-      	        self.log.info('Status contained ON, replicator was started!')
-      	        break
-      	  
-      		time.sleep(10)
+                should_stop_waiting = ("ON" in status.upper())
+          
+            if should_stop_waiting:
+                self.log.info('Status contained ON, replicator was started!')
+                break
+          
+            time.sleep(10)
 
         self.consistency_ok = True
         self.db_cluster.nemesis.append(CategoricalMonkey(
