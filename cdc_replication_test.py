@@ -30,6 +30,7 @@ from sdcm.tester import ClusterTester
 from sdcm.gemini_thread import GeminiStressThread
 from sdcm.nemesis import CategoricalMonkey
 
+import urllib.request
 
 class Mode(Enum):
     DELTA = 1
@@ -67,6 +68,7 @@ def write_cql_result(res, path: str):
 
 SCYLLA_MIGRATE_URL = "https://kbr-scylla.s3-eu-west-1.amazonaws.com/scylla-migrate"
 REPLICATOR_URL = "https://kbr-scylla.s3-eu-west-1.amazonaws.com/scylla-cdc-replicator-1.0.1-SNAPSHOT-jar-with-dependencies.jar"
+REPLICATOR_STATE_URL = "https://kbr-scylla.s3-eu-west-1.amazonaws.com/piotrgrabowski/status"
 
 
 class CDCReplicationTest(ClusterTester):
@@ -128,7 +130,29 @@ class CDCReplicationTest(ClusterTester):
 
         self.copy_master_schema_to_replica()
 
-        self.start_replicator(Mode.DELTA)
+        # The schema is now set up, you should manually
+        # start Kafka cluster with Scylla CDC Source Connector
+        # and Scylla Sink Connector, to replicate from 
+        # one cluster to another.
+        self.log.info('Now go setup the Kafka cluster and connectors!')
+        self.log.info('Source cluster is: {}'.format(self.db_cluster.nodes[0].external_address))
+        self.log.info('Destination cluster is: {}'.format(self.cs_db_cluster.nodes[0].external_address))
+        
+      	while True:
+      	    self.log.info('Waiting for you to manually setup the Kafka cluster and connectors!')
+      	     
+      	    should_stop_waiting = False
+      	     
+      	    with urllib.request.urlopen(REPLICATOR_STATE_URL) as f:
+                status = f.read().decode('utf-8')
+                self.log.info('Got status: {}'.format(status))
+      	        should_stop_waiting = ("ON" in status.upper())
+      	  
+      	    if should_stop_waiting:
+      	        self.log.info('Status contained ON, replicator was started!')
+      	        break
+      	  
+      		time.sleep(10)
 
         self.consistency_ok = True
         self.db_cluster.nemesis.append(CategoricalMonkey(
@@ -170,7 +194,16 @@ class CDCReplicationTest(ClusterTester):
         # 9 rounds, ~1h30 minutes each -> ~11h30m total
         # The number of rounds is tuned according to the available disk space in an i3.large AWS instance.
         # One more round would cause the nodes to run out of disk space.
-        no_rounds = 9
+        
+        
+        # TEMP_CHANGE
+        # TEMP_CHANGE
+        # TEMP_CHANGE
+        # TEMP_CHANGE
+        # TEMP_CHANGE
+        # TEMP_CHANGE
+        # TEMP_CHANGE
+        no_rounds = 1
         for rnd in range(no_rounds):
             self.log.info('Starting round {}'.format(rnd))
 
@@ -185,12 +218,15 @@ class CDCReplicationTest(ClusterTester):
             time.sleep(180)
 
             self.log.info('Stopping nemesis...')
-            self.db_cluster.stop_nemesis(timeout=1800)
+            # TEMP_CHANGE
+            # TEMP_CHANGE
+            # TEMP_CHANGE
+            # TEMP_CHANGE
+            # TEMP_CHANGE
+            # TEMP_CHANGE
+            # TEMP_CHANGE
+            self.db_cluster.stop_nemesis(timeout=240)
             self.log.info('Nemesis stopped.')
-
-            self.log.info('Fetching replicator logs...')
-            replicator_log_path = os.path.join(self.logdir, 'cdc-replicator.log')
-            loader_node.remoter.receive_files(src='cdc-replicator.log', dst=replicator_log_path)
 
             migrate_log_path = os.path.join(self.logdir, 'scylla-migrate.log')
             (migrate_ok, consistency_ok) = self.check_consistency(migrate_log_path)
@@ -226,94 +262,7 @@ class CDCReplicationTest(ClusterTester):
     # pylint: disable=too-many-statements,too-many-branches,too-many-locals
 
     def test_replication(self, is_gemini_test: bool, mode: Mode) -> None:
-        assert is_gemini_test or (mode == Mode.DELTA), "cassandra-stress doesn't work with preimage/postimage modes"
-
-        self.consistency_ok = False
-
-        self.log.info('Waiting for the latest CDC generation to start...')
-        # 2 * ring_delay (ring_delay = 30s) + leeway
-        time.sleep(70)
-
-        if is_gemini_test:
-            self.log.info('Starting gemini.')
-            stress_thread = self.start_gemini()
-        else:
-            self.log.info('Starting cassandra-stress.')
-            stress_thread = self.run_stress_cassandra_thread(stress_cmd=self.params.get('stress_cmd'))
-
-        self.log.info('Let stressor run for a while...')
-        # Wait for gemini/C-S to create keyspaces/tables/UTs
-        time.sleep(20)
-
-        self.copy_master_schema_to_replica()
-
-        self.log.info('Starting nemesis.')
-        self.db_cluster.add_nemesis(nemesis=self.get_nemesis_class(), tester_obj=self)
-        self.db_cluster.start_nemesis()
-
-        loader_node = self.loaders.nodes[0]
-        self.setup_tools(loader_node)
-
-        self.start_replicator(mode)
-
-        self.log.info('Let stressor run for a while...')
-        time.sleep(30)
-
-        self.log.info('Stopping nemesis before bootstrapping a new node.')
-        self.db_cluster.stop_nemesis(timeout=600)
-
-        self.log.info('Let stressor run for a while...')
-        time.sleep(30)
-
-        self.log.info('Bootstrapping a new node...')
-        new_node = self.db_cluster.add_nodes(count=1, enable_auto_bootstrap=True)[0]
-        self.log.info('Waiting for new node to finish initializing...')
-        self.db_cluster.wait_for_init(node_list=[new_node])
-        self.monitors.reconfigure_scylla_monitoring()
-
-        self.log.info('Bootstrapped, restarting nemesis.')
-        self.db_cluster.start_nemesis()
-
-        self.log.info('Waiting for stressor to finish...')
-        if is_gemini_test:
-            stress_results = self.verify_gemini_results(queue=stress_thread)
-            self.log.info('gemini results: {}'.format(stress_results))
-        else:
-            stress_results = stress_thread.get_results()
-            self.log.info('cassandra-stress results: {}'.format(list(stress_results)))
-
-        self.log.info('Waiting for replicator to finish (sleeping 60s)...')
-        time.sleep(60)
-
-        self.log.info('Stopping nemesis.')
-        self.db_cluster.stop_nemesis(timeout=600)
-
-        self.log.info('Fetching replicator logs.')
-        replicator_log_path = os.path.join(self.logdir, 'cdc-replicator.log')
-        loader_node.remoter.receive_files(src='cdc-replicator.log', dst=replicator_log_path)
-
-        master_node = self.db_cluster.nodes[0]
-        replica_node = self.cs_db_cluster.nodes[0]
-
-        migrate_log_path = None
-        migrate_ok = True
-        if mode == Mode.PREIMAGE:
-            with open(replicator_log_path) as file:
-                self.consistency_ok = not 'Inconsistency detected.\n' in (line for line in file)
-        else:
-            migrate_log_path = os.path.join(self.logdir, 'scylla-migrate.log')
-            (migrate_ok, consistency_ok) = self.check_consistency(migrate_log_path,
-                                                                  compare_timestamps=(mode != Mode.POSTIMAGE))
-            self.consistency_ok = consistency_ok
-
-        if not self.consistency_ok:
-            self.log.error('Inconsistency detected.')
-
-        if self.consistency_ok and migrate_ok:
-            self.log.info('Consistency check successful.')
-        else:
-            self.collect_data_for_analysis(master_node, replica_node)
-            self.fail('Consistency check failed.')
+        self.log.error("test_replicator called instead of longevity one!")
 
     # Compares tables using the scylla-migrate tool.
     def check_consistency(self, migrate_log_dst_path: str, compare_timestamps: bool = True) -> Tuple[bool, bool]:
@@ -363,27 +312,6 @@ class CDCReplicationTest(ClusterTester):
                          " with replication = {'class': 'SimpleStrategy', 'replication_factor': 1}")
             for stmt in ut_ddls + table_ddls:
                 sess.execute(stmt)
-
-    def start_replicator(self, mode: Mode) -> None:
-        # We run the replicator in a tmux session so that remoter.run returns immediately
-        # (the replicator will run in the background). We redirect the output to a log file for later extraction.
-        replicator_script = dedent("""
-            (cat >runreplicator.sh && chmod +x runreplicator.sh && tmux new-session -d -s 'replicator' ./runreplicator.sh) <<'EOF'
-            #!/bin/bash
-
-            java -cp replicator.jar com.scylladb.cdc.replicator.Main -k {} -t {} -s {} -d {} -cl one -m {} 2>&1 | tee cdc-replicator.log
-            EOF
-        """.format(self.KS_NAME, self.TABLE_NAME,
-                   self.db_cluster.nodes[0].external_address,
-                   self.cs_db_cluster.nodes[0].external_address,
-                   mode_str(mode)))
-
-        self.log.info('Replicator script:\n{}'.format(replicator_script))
-
-        self.log.info('Starting replicator.')
-        res = self.loaders.nodes[0].remoter.run(cmd=replicator_script)
-        if res.exit_status != 0:
-            self.fail('Could not start CDC replicator.')
 
     def start_gemini(self, seed: Optional[int] = None) -> GeminiStressThread:
         params = {'gemini_seed': seed} if seed else {}
