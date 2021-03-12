@@ -335,11 +335,6 @@ class CDCReplicationTest(ClusterTester):
         if res.exit_status != 0:
             self.fail('Could not obtain scylla-migrate.')
 
-        self.log.info('Getting replicator on loader node.')
-        res = loader_node.remoter.run(cmd=f'wget {REPLICATOR_URL} -O replicator.jar')
-        if res.exit_status != 0:
-            self.fail('Could not obtain CDC replicator.')
-
     def get_email_data(self) -> dict:
         self.log.info("Prepare data for email")
 
