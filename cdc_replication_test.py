@@ -207,8 +207,8 @@ class CDCReplicationTest(ClusterTester):
             stress_results = self.verify_gemini_results(queue=stress_thread)
             self.log.info('gemini results: {}'.format(stress_results))
 
-            self.log.info('Waiting for replicator to finish (sleeping 180s)...')
-            time.sleep(180)
+            self.log.info('Waiting for replicator to finish (sleeping 10 minutes)...')
+            time.sleep(10 * 60)
 
             self.log.info('Stopping nemesis...')
 
@@ -255,7 +255,7 @@ class CDCReplicationTest(ClusterTester):
     def check_consistency(self, migrate_log_dst_path: str, compare_timestamps: bool = True) -> Tuple[bool, bool]:
         loader_node = self.loaders.nodes[0]
         self.log.info('Comparing table contents using scylla-migrate...')
-        res = loader_node.remoter.run(cmd='./scylla-migrate check --master-address {} --replica-address {}'
+        res = loader_node.remoter.run(cmd='./scylla-migrate check --rate-limit 500000 --master-address {} --replica-address {}'
                                       ' --ignore-schema-difference {} {}.{} 2>&1 | tee scylla-migrate.log'.format(
                                           self.db_cluster.nodes[0].external_address,
                                           self.cs_db_cluster.nodes[0].external_address,
